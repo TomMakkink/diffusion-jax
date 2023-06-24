@@ -1,0 +1,6 @@
+matplotlib
+mypy
+pillow
+pre-commit>=3.3.3
+torch>=2.0.1
+torchvision>=0.15.2
