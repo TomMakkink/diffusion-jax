@@ -3,7 +3,7 @@ channels:
   - defaults
   - conda-forge
 dependencies:
-  - python=3.9
+  - python=3.9.17
   - pip=22.0.4
   - git=2.34.1
   - pip:

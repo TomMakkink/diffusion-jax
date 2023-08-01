@@ -4,6 +4,9 @@ forward and backward processes.
 
 from __future__ import annotations
 
+from typing import Any
+
+import haiku as hk
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
@@ -102,6 +105,74 @@ class DDPM:
         noised_image = mean + std * noise
 
         return noised_image, noise
+
+    def perform_denoising_step(
+        self,
+        x_t: jnp.ndarray,
+        t: jnp.ndarray,
+        network_fn: hk.Module,
+        network_params: dict[str, Any],
+    ) -> jnp.ndarray:
+        """Denoise a noisy image to get a slightly less noisy image.
+
+        The following steps are done:
+        - Call U-net model to predict the total noise in the noised input image `x_t`.
+        - Subtract this from `x_t` to give an estimate of the final image `x_0`.
+        - If not in the final timestep, we apply noise (but less than previously) which
+          results in x_{t-1} which is (hopefully) a slight improvement over `x_t`.
+
+        This is used in Algorithm 2 in the original DDPM paper: it is the successive
+        application of this method (starting from pure noise at t=T) that results in a
+        final generated/denoised image.
+
+        Args:
+            x_t: the noisy image at timestep `t`. Shape (B, C, H, W).
+            t: the timestep in question. Shape (B,).
+            network_fn: the U-net model used to predict the "total"
+                noise in the noisy image. Note this model is expected to already
+                be initialized.
+            network_params: network parameters to be passed into the apply method
+                (e.g. params, state, random key).
+
+        Returns:
+            - x_{t-1} if t > 0. This a noised version of the final image. It can be
+              thought of as the result of applying a denoising step on `x_t`.
+              Shape (B, C, H, W).
+            - x_0 if t = 0. This is the final generated image. Shape (B, C, H, W).
+        """
+        beta_t = get_value_from_index(self.betas, t, x_t.shape)
+        sqrt_one_minus_alphabar_t = get_value_from_index(
+            self.sqrt_one_minus_alphabars, t, x_t.shape
+        )
+        sqrt_recip_alpha_t = get_value_from_index(self.sqrt_recip_alphas, t, x_t.shape)
+
+        # Calculate µ_θ in Equation 11 of the DDPM paper, where the noise is predicted
+        # using the U-net model (represented as ε_θ(x_t, t) in the paper).
+        pred_noise = network_fn.apply(t=t, x=x_t, **network_params)
+        model_mean = sqrt_recip_alpha_t * (
+            x_t - beta_t * pred_noise / sqrt_one_minus_alphabar_t
+        )
+
+        # Compute (sigma_t)^2 in Algorithm 2 line 4
+        posterior_variance_t = get_value_from_index(
+            self.posterior_variance, t, x_t.shape
+        )
+
+        if t == 0:
+            x_0 = model_mean
+            # As pointed out by Luis Pereira (see YouTube comment)
+            # The t's are offset from the t's in the paper
+            return x_0
+
+        # Sample z (in Algorithm 2) from a standard normal distribution
+        random_key = jax.random.PRNGKey(
+            51
+        )  # Best way to choose seeds? Should this be passed in as a argument?
+        noise = jax.random.normal(random_key, x_t.shape)
+
+        # Return x_{t-1} in Algorithm 2 line 4. This is basically
+        # sampling from the distribution q(x_{t-1}|x_t) in Equation 4.
+        return model_mean + jnp.sqrt(posterior_variance_t) * noise
 
 
 if __name__ == "__main__":

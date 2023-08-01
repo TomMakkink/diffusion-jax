@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
   {name="Daniel Luo and Tom Makkink"},
 ]
-requires-python = "==3.9.16"
+requires-python = "==3.9.17"
 version = "0.0.1"
 
 [tool.setuptools.packages]
@@ -44,6 +44,7 @@ strict_optional = true
 strict_equality = true
 explicit_package_bases = true
 follow_imports = "skip"
+ignore_missing_imports = true # Ignore Missing library stubs or py.typed marker
 
 [[tool.mypy.overrides]]
 module = [
@@ -81,8 +82,10 @@ ignore = [
     "PLR0915", # Too many statements
     "PLE0605", # Invalid format for `__all__`, must be `tuple` or `list`
     "PLR0912", # Too many branches
+    "PLW2901", # Avoid variable overwritten by assignment target
     "S113", # Avoid "Probable use of requests call without timeout"
     "N803", # Avoid "Argument name should be lowercase"
+    "N806", # Avoid "Variable name should be lowercase"
 ]
 
 [tool.ruff.per-file-ignores]

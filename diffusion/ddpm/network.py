@@ -26,7 +26,7 @@ class SinusoidalPositionEmbeddings(hk.Module):
         super().__init__()
         self.dim = dim
 
-    def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, t: jax.Array) -> jax.Array:
         half_dim = self.dim // 2
         embeddings = jnp.log(10000) / (half_dim - 1)
         embeddings = jnp.exp(jnp.arange(half_dim) * -embeddings)
@@ -54,8 +54,8 @@ class Block(hk.Module):
         self.out_ch = out_ch
 
     def __call__(
-        self, x: jnp.ndarray, t: jnp.ndarray, is_training: bool = True
-    ) -> jnp.ndarray:
+        self, x: jax.Array, t: jax.Array, is_training: bool = True
+    ) -> jax.Array:
         """Forward pass of the downsampling/upsampling block.
 
         Args:
@@ -121,7 +121,7 @@ class SimpleUnet(hk.Module):
         self.out_dim = 3
         self.time_emb_dim = 32
 
-    def __call__(self, x: jnp.ndarray, t: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
         """Do a forward pass of the neural network in the denoising process.
 
         Args:
@@ -168,7 +168,7 @@ class SimpleUnet(hk.Module):
 
 
 def make_simple_unet() -> Callable:
-    def forward_fn(x: jnp.ndarray, t: jnp.ndarray) -> jnp.ndarray:
+    def forward_fn(x: jax.Array, t: jax.Array) -> jax.Array:
         network = SimpleUnet()
         return network(x=x, t=t)
 

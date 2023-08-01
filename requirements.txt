@@ -1,7 +1,9 @@
-jax==0.4.13
-jaxlib==0.4.13
+dm-haiku==0.0.10
+jax==0.4.14
+jaxlib==0.4.14
 matplotlib
 mypy
+optax==0.1.5
 pillow
 pre-commit>=3.3.3
 torch>=2.0.1
