@@ -28,6 +28,10 @@ Install the local package in editable mode:
 pip install --editable .
 ```
 
+## Training
+
+To train a Diffusion model on the ox
+
 ## DDPM
 
 The implementation of DDPM is based on the
