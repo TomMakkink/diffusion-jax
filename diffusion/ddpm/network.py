@@ -32,19 +32,20 @@ class SinusoidalPositionEmbeddings(nn.Module):
             (jnp.sin(embeddings), jnp.cos(embeddings)), axis=-1
         )
         return embeddings
-    
 
-class Block(nn.Module): 
-    """Block used in U-net. 
-    
+
+class Block(nn.Module):
+    """Block used in U-net.
+
     Args:
         in_ch: number of input channels.
         out_ch: number of output channels.
         up: whether the block is used for upsampling. If False,
             the block is for downsampling.
     """
-    in_ch: int 
-    out_ch: int 
+
+    in_ch: int
+    out_ch: int
     up: bool = False
 
 class Block(nn.Module):
@@ -84,7 +85,7 @@ class Block(nn.Module):
             transform = nn.ConvTranspose(
                 features=self.out_ch, kernel_size=(4,), strides=[2], padding="SAME"
             )
-            
+
         # First convolution, ReLU, and batch normalisation
         h = conv1(x)
         h = jax.nn.relu(h)
@@ -160,7 +161,6 @@ class SimpleUnet(nn.Module):
         output = nn.Conv(features=self.out_dim, kernel_size=(1,))(x)
 
         return output
-    
 
 
 if __name__ == "__main__":
@@ -179,9 +179,8 @@ if __name__ == "__main__":
     rng = jax.random.PRNGKey(42)
     fake_t = jnp.array([1.0])
     fake_x = jnp.ones_like(image)
-    
-    # Define the network 
-    print("Init model.")
+
+    # Define the network
     model = SimpleUnet()
 
     # Define the network
