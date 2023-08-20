@@ -6,11 +6,10 @@
       which timestep we are: the timestep `t` is positionally encoded.
     - We output one single value (mean), because the variance is fixed.
 """
-from typing import Sequence
+from collections.abc import Sequence
 
-
-from flax import linen as nn
 import jax
+from flax import linen as nn
 from jax import numpy as jnp
 from torch.utils.data import DataLoader
 
@@ -20,7 +19,8 @@ from diffusion.ddpm.data_loader import load_transformed_dataset
 
 class SinusoidalPositionEmbeddings(nn.Module):
     """Sinusoidal Positional encoding used to encode the timestep `t`."""
-    dim: int # Emedding dimension 
+
+    dim: int  # Emedding dimension
 
     @nn.compact
     def __call__(self, t: jax.Array) -> jax.Array:
@@ -32,19 +32,20 @@ class SinusoidalPositionEmbeddings(nn.Module):
             (jnp.sin(embeddings), jnp.cos(embeddings)), axis=-1
         )
         return embeddings
-    
 
-class Block(nn.Module): 
-    """Block used in U-net. 
-    
+
+class Block(nn.Module):
+    """Block used in U-net.
+
     Args:
         in_ch: number of input channels.
         out_ch: number of output channels.
         up: whether the block is used for upsampling. If False,
             the block is for downsampling.
     """
-    in_ch: int 
-    out_ch: int 
+
+    in_ch: int
+    out_ch: int
     up: bool = False
 
     @nn.compact
@@ -61,25 +62,21 @@ class Block(nn.Module):
         """
         # Define layers for upsampling vs. downsampling
         if self.up:
-            conv1 = nn.Conv(
-                features=self.out_ch, kernel_size=(3,), padding="SAME"
-            )
+            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")
             transform = nn.ConvTranspose(
                 features=self.out_ch, kernel_size=(4,), strides=[2], padding="SAME"
             )
         else:
-            conv1 = nn.Conv(
-                features=self.out_ch, kernel_size=(3,), padding="SAME"
-            )
+            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")
             transform = nn.ConvTranspose(
                 features=self.out_ch, kernel_size=(4,), strides=[2], padding="SAME"
             )
-            
+
         # First convolution, ReLU, and batch normalisation
         h = conv1(x)
         h = jax.nn.relu(h)
         h = nn.BatchNorm(momentum=0.9, use_running_average=True)(h)
-        
+
         # Time embedding. Shape (1, time_emb_dim)
         time_emb = nn.Dense(features=self.out_ch)(t)
         time_emb = jax.nn.relu(time_emb)
@@ -102,12 +99,13 @@ class Block(nn.Module):
 
 class SimpleUnet(nn.Module):
     """A simpliefied variant of the U-net architecture."""
-    image_channels: int = 3 
+
+    image_channels: int = 3
     down_channels: Sequence[int] = (64, 128, 256, 512, 1024)
     up_channels: Sequence[int] = (1024, 512, 256, 128, 64)
     out_dim: int = 3
-    time_emb_dim: int = 32  
-    
+    time_emb_dim: int = 32
+
     @nn.compact
     def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
         """Do a forward pass of the neural network in the denoising process.
@@ -130,9 +128,9 @@ class SimpleUnet(nn.Module):
             ]
         )
         t_encoded = time_mlp(t)
-        
+
         x = nn.Conv(features=self.down_channels[0], kernel_size=(3,), padding="SAME")(x)
-        
+
         # U-net: downsampling followed by upsampling.
         residual_inputs = []  # Used as a stack
         for i in range(len(self.down_channels) - 1):
@@ -147,13 +145,13 @@ class SimpleUnet(nn.Module):
             x = Block(
                 in_ch=self.up_channels[i], out_ch=self.up_channels[i + 1], up=True
             )(x, t_encoded)
-            
+
         output = nn.Conv(features=self.out_dim, kernel_size=(1,))(x)
 
         return output
-    
 
-if __name__ == "__main__":     
+
+if __name__ == "__main__":
     # Load example image
     data = load_transformed_dataset()
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
@@ -169,9 +167,8 @@ if __name__ == "__main__":
     rng = jax.random.PRNGKey(42)
     fake_t = jnp.array([1.0])
     fake_x = jnp.ones_like(image)
-    
-    # Define the network 
-    print("Init model.")
+
+    # Define the network
     model = SimpleUnet()
 
     # Intialize the simple unet

@@ -159,5 +159,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Image Dataset 
+# Python 3.9 Dependencies
+3.9/
+
+# Image Dataset
 oxford-iiit-pet/

@@ -1,4 +1,4 @@
-name: diffusion-jax-playground
+name: ddpm-env
 channels:
   - defaults
   - conda-forge
