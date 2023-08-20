@@ -48,6 +48,20 @@ class Block(nn.Module):
     out_ch: int
     up: bool = False
 
+class Block(nn.Module):
+    """Block used in U-net.
+
+    Args:
+        in_ch: number of input channels.
+        out_ch: number of output channels.
+        up: whether the block is used for upsampling. If False,
+            the block is for downsampling.
+    """
+
+    in_ch: int
+    out_ch: int
+    up: bool = False
+
     @nn.compact
     def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
         """Forward pass of the downsampling/upsampling block.
@@ -76,7 +90,6 @@ class Block(nn.Module):
         h = conv1(x)
         h = jax.nn.relu(h)
         h = nn.BatchNorm(momentum=0.9, use_running_average=True)(h)
-
         # Time embedding. Shape (1, time_emb_dim)
         time_emb = nn.Dense(features=self.out_ch)(t)
         time_emb = jax.nn.relu(time_emb)
@@ -145,7 +158,6 @@ class SimpleUnet(nn.Module):
             x = Block(
                 in_ch=self.up_channels[i], out_ch=self.up_channels[i + 1], up=True
             )(x, t_encoded)
-
         output = nn.Conv(features=self.out_dim, kernel_size=(1,))(x)
 
         return output
@@ -167,6 +179,9 @@ if __name__ == "__main__":
     rng = jax.random.PRNGKey(42)
     fake_t = jnp.array([1.0])
     fake_x = jnp.ones_like(image)
+
+    # Define the network
+    model = SimpleUnet()
 
     # Define the network
     model = SimpleUnet()
