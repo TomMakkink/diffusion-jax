@@ -172,7 +172,9 @@ class DDPM:
 
         # Return x_{t-1} in Algorithm 2 line 4. This is basically
         # sampling from the distribution q(x_{t-1}|x_t) in Equation 4.
-        return model_mean + jnp.sqrt(posterior_variance_t) * noise
+        x_t_1 = model_mean + jnp.sqrt(posterior_variance_t) * noise
+
+        return x_t_1
 
 
 if __name__ == "__main__":

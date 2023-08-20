@@ -34,7 +34,9 @@ pip install --editable .
 
 To train a Diffusion model, launch the following command:
 
-`python diffusion/cli/training.py`
+```shell
+python diffusion/cli/training.py
+```
 
 ## DDPM
 

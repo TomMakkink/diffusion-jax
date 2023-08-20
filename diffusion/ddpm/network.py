@@ -48,20 +48,6 @@ class Block(nn.Module):
     out_ch: int
     up: bool = False
 
-class Block(nn.Module):
-    """Block used in U-net.
-
-    Args:
-        in_ch: number of input channels.
-        out_ch: number of output channels.
-        up: whether the block is used for upsampling. If False,
-            the block is for downsampling.
-    """
-
-    in_ch: int
-    out_ch: int
-    up: bool = False
-
     @nn.compact
     def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
         """Forward pass of the downsampling/upsampling block.
@@ -179,9 +165,6 @@ if __name__ == "__main__":
     rng = jax.random.PRNGKey(42)
     fake_t = jnp.array([1.0])
     fake_x = jnp.ones_like(image)
-
-    # Define the network
-    model = SimpleUnet()
 
     # Define the network
     model = SimpleUnet()
