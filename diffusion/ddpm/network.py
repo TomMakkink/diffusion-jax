@@ -6,10 +6,10 @@
       which timestep we are: the timestep `t` is positionally encoded.
     - We output one single value (mean), because the variance is fixed.
 """
-from typing import Callable
+from collections.abc import Sequence
 
-import haiku as hk
 import jax
+from flax import linen as nn
 from jax import numpy as jnp
 from torch.utils.data import DataLoader
 
@@ -17,15 +17,12 @@ from diffusion.ddpm.constants import BATCH_SIZE
 from diffusion.ddpm.data_loader import load_transformed_dataset
 
 
-class SinusoidalPositionEmbeddings(hk.Module):
-    """Positional encoding is needed because the U-Net uses the same network parameters
-    regardless of the timestep `t` in question.
-    """
+class SinusoidalPositionEmbeddings(nn.Module):
+    """Sinusoidal Positional encoding used to encode the timestep `t`."""
 
-    def __init__(self, dim: int) -> None:
-        super().__init__()
-        self.dim = dim
+    dim: int  # Emedding dimension
 
+    @nn.compact
     def __call__(self, t: jax.Array) -> jax.Array:
         half_dim = self.dim // 2
         embeddings = jnp.log(10000) / (half_dim - 1)
@@ -37,25 +34,22 @@ class SinusoidalPositionEmbeddings(hk.Module):
         return embeddings
 
 
-class Block(hk.Module):
-    def __init__(self, in_ch: int, out_ch: int, up: bool = False) -> None:
-        """Block used in U-net.
+class Block(nn.Module):
+    """Block used in U-net.
 
-        Args:
-            in_ch: number of input channels.
-            out_ch: number of output channels.
-            up: whether the block is used for upsampling. If False,
-                the block is for downsampling.
-        """
-        super().__init__()
-        self.time_mlp = hk.Linear(output_size=out_ch)
-        self.up = up
-        self.in_ch = in_ch
-        self.out_ch = out_ch
+    Args:
+        in_ch: number of input channels.
+        out_ch: number of output channels.
+        up: whether the block is used for upsampling. If False,
+            the block is for downsampling.
+    """
 
-    def __call__(
-        self, x: jax.Array, t: jax.Array, is_training: bool = True
-    ) -> jax.Array:
+    in_ch: int
+    out_ch: int
+    up: bool = False
+
+    @nn.compact
+    def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
         """Forward pass of the downsampling/upsampling block.
 
         Args:
@@ -68,29 +62,24 @@ class Block(hk.Module):
         """
         # Define layers for upsampling vs. downsampling
         if self.up:
-            conv1 = hk.Conv2D(
-                output_channels=self.out_ch, kernel_shape=3, padding="SAME"
-            )
-            transform = hk.Conv2DTranspose(
-                output_channels=self.out_ch, kernel_shape=4, stride=2, padding="SAME"
+            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")
+            transform = nn.ConvTranspose(
+                features=self.out_ch, kernel_size=(4,), strides=[2], padding="SAME"
             )
         else:
-            conv1 = hk.Conv2D(
-                output_channels=self.out_ch, kernel_shape=3, padding="SAME"
-            )
-            transform = hk.Conv2D(
-                output_channels=self.out_ch, kernel_shape=4, stride=2, padding="SAME"
+            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")
+            transform = nn.ConvTranspose(
+                features=self.out_ch, kernel_size=(4,), strides=[2], padding="SAME"
             )
 
         # First convolution, ReLU, and batch normalisation
         h = conv1(x)
         h = jax.nn.relu(h)
-        h = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.9)(
-            h, is_training=is_training
-        )
+        h = nn.BatchNorm(momentum=0.9, use_running_average=True)(h)
 
         # Time embedding. Shape (1, time_emb_dim)
-        time_emb = jax.nn.relu(self.time_mlp(t))
+        time_emb = nn.Dense(features=self.out_ch)(t)
+        time_emb = jax.nn.relu(time_emb)
 
         # time_emb = time_emb.reshape((time_emb.shape[0], time_emb.shape[1], 1, 1))
         time_emb = time_emb[(...,) + (None,) * 2]
@@ -101,26 +90,23 @@ class Block(hk.Module):
         h = h + time_emb
 
         # Second Conv
-        h = hk.Conv2D(output_channels=self.out_ch, kernel_shape=3, padding="SAME")(h)
+        h = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")(h)
         h = jax.nn.relu(h)
-        h = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.9)(
-            h, is_training=is_training
-        )
+        h = nn.BatchNorm(momentum=0.9, use_running_average=True)(h)
 
         return transform(h)
 
 
-class SimpleUnet(hk.Module):
-    """A simplified variant of the U-net architecture."""
+class SimpleUnet(nn.Module):
+    """A simpliefied variant of the U-net architecture."""
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.image_channels = 3
-        self.down_channels = (64, 128, 256, 512, 1024)
-        self.up_channels = (1024, 512, 256, 128, 64)
-        self.out_dim = 3
-        self.time_emb_dim = 32
+    image_channels: int = 3
+    down_channels: Sequence[int] = (64, 128, 256, 512, 1024)
+    up_channels: Sequence[int] = (1024, 512, 256, 128, 64)
+    out_dim: int = 3
+    time_emb_dim: int = 32
 
+    @nn.compact
     def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
         """Do a forward pass of the neural network in the denoising process.
 
@@ -134,18 +120,16 @@ class SimpleUnet(hk.Module):
             A prediction of the noise in the input `x`.
         """
         # Compute the positional encoding of the timestep
-        time_mlp = hk.Sequential(
+        time_mlp = nn.Sequential(
             [
                 SinusoidalPositionEmbeddings(self.time_emb_dim),
-                hk.Linear(self.time_emb_dim),
+                nn.Dense(self.time_emb_dim),
                 jax.nn.relu,
             ]
         )
         t_encoded = time_mlp(t)
 
-        x = hk.Conv2D(
-            output_channels=self.down_channels[0], kernel_shape=3, padding="SAME"
-        )(x)
+        x = nn.Conv(features=self.down_channels[0], kernel_size=(3,), padding="SAME")(x)
 
         # U-net: downsampling followed by upsampling.
         residual_inputs = []  # Used as a stack
@@ -162,30 +146,19 @@ class SimpleUnet(hk.Module):
                 in_ch=self.up_channels[i], out_ch=self.up_channels[i + 1], up=True
             )(x, t_encoded)
 
-        output = hk.Conv2D(self.out_dim, kernel_shape=1)(x)
+        output = nn.Conv(features=self.out_dim, kernel_size=(1,))(x)
 
         return output
 
 
-def make_simple_unet() -> Callable:
-    def forward_fn(x: jax.Array, t: jax.Array) -> jax.Array:
-        network = SimpleUnet()
-        return network(x=x, t=t)
-
-    return forward_fn
-
-
 if __name__ == "__main__":
-    # Initialise the SimpleUnet network function.
-    network_fn = hk.transform_with_state(make_simple_unet())
-
     # Load example image
     data = load_transformed_dataset()
     dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
     image_and_label = next(iter(dataloader))
     image = image_and_label[0]
     image = jnp.array(image.numpy())
-    # Haiku convolution layers by default expect a NHWC data format,
+    # Flax convolution layers by default expect a NHWC data format,
     # not channels first like PyTorch.
     image = jnp.transpose(image, (0, 2, 3, 1))
     t = jnp.array([3])
@@ -195,9 +168,12 @@ if __name__ == "__main__":
     fake_t = jnp.array([1.0])
     fake_x = jnp.ones_like(image)
 
+    # Define the network
+    model = SimpleUnet()
+
     # Intialize the simple unet
-    params, state = network_fn.init(rng=rng, t=fake_t, x=fake_x)
+    params = model.init(rngs=rng, t=fake_t, x=fake_x)
 
     # Apply the forward function
     rng = jax.random.PRNGKey(7)
-    pred_noise = network_fn.apply(params=params, state=state, rng=rng, t=t, x=image)
+    pred_noise = model.apply(params, rng=rng, t=t, x=image)

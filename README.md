@@ -1,6 +1,8 @@
 # Diffusion
 
-A playground for testing different diffusion models including DDPM.
+Implementation of
+[Denoising Diffusion Probablistic Models](https://arxiv.org/abs/2006.11239) (DDPM) by Ho
+et al. 2020.
 
 ## Setup
 
@@ -30,7 +32,9 @@ pip install --editable .
 
 ## Training
 
-To train a Diffusion model on the ox
+To train a Diffusion model, launch the following command:
+
+`python diffusion/cli/training.py`
 
 ## DDPM
 

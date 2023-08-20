@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from diffusion.ddpm.constants import BATCH_SIZE, IMG_SIZE, SEED
 from diffusion.ddpm.data_loader import load_transformed_dataset
 from diffusion.ddpm.ddpm import DDPM
-from diffusion.ddpm.network import make_simple_unet
+from diffusion.ddpm.network import SimpleUnet
 
 # Configure logging to show messages at the INFO level or above
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +63,7 @@ def training() -> None:
     )
 
     # Initialise the SimpleUnet network function.
-    network_fn = hk.transform_with_state(make_simple_unet())
+    network_fn = SimpleUnet()
 
     # Set the random key and provide some fake data to initialize the model
     # with the correct shapes.
@@ -72,7 +72,7 @@ def training() -> None:
     init_x = jnp.ones((BATCH_SIZE, IMG_SIZE, IMG_SIZE, 3))
 
     # Initialize the network
-    params, state = network_fn.init(rng=rng, t=init_t, x=init_x)
+    params, state = network_fn.init(rngs=rng, t=init_t, x=init_x)
 
     # Set up the optimizer
     optimizer = optax.adam(learning_rate=0.001)
