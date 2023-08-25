@@ -11,10 +11,6 @@ from collections.abc import Sequence
 import jax
 from flax import linen as nn
 from jax import numpy as jnp
-from torch.utils.data import DataLoader
-
-from diffusion.ddpm.constants import BATCH_SIZE
-from diffusion.ddpm.data_loader import load_transformed_dataset
 
 
 class SinusoidalPositionEmbeddings(nn.Module):
@@ -155,31 +151,3 @@ class SimpleUnet(nn.Module):
         output = nn.Conv(features=self.out_dim, kernel_size=(1,))(x)
 
         return output
-
-
-if __name__ == "__main__":
-    # Load example image
-    data = load_transformed_dataset()
-    dataloader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-    image_and_label = next(iter(dataloader))
-    image = image_and_label[0]
-    image = jnp.array(image.numpy())
-    # Flax convolution layers by default expect a NHWC data format,
-    # not channels first like PyTorch.
-    image = jnp.transpose(image, (0, 2, 3, 1))
-    t = jnp.array([3])
-
-    # Set the random key and provide some fake data for shape.
-    rng = jax.random.PRNGKey(42)
-    fake_t = jnp.array([1.0])
-    fake_x = jnp.ones_like(image)
-
-    # Define the network
-    model = SimpleUnet()
-
-    # Intialize the simple unet
-    params = model.init(rngs=rng, t=fake_t, x=fake_x)
-
-    # Apply the forward function
-    rng = jax.random.PRNGKey(7)
-    pred_noise = model.apply(params, rngs=rng, t=t, x=image)
