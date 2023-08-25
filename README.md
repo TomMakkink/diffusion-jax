@@ -21,7 +21,7 @@ conda env create --file environment.yaml
 Activate the conda environment:
 
 ```shell
-conda activate diffusion-jax-playground
+conda activate ddpm-env
 ```
 
 Install the local package in editable mode:
