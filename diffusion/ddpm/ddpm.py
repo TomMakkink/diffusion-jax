@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from typing import Any
 
-import haiku as hk
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional
+from flax import linen as nn
 from jax import numpy as jnp
 from torch.utils.data import DataLoader
 
@@ -110,8 +110,9 @@ class DDPM:
         self,
         x_t: jnp.ndarray,
         t: jnp.ndarray,
-        network_fn: hk.Module,
+        network_fn: nn.Module,
         network_params: dict[str, Any],
+        rng: jax.random.PRNGKey,
     ) -> jnp.ndarray:
         """Denoise a noisy image to get a slightly less noisy image.
 
@@ -165,10 +166,8 @@ class DDPM:
             return x_0
 
         # Sample z (in Algorithm 2) from a standard normal distribution
-        random_key = jax.random.PRNGKey(
-            51
-        )  # Best way to choose seeds? Should this be passed in as a argument?
-        noise = jax.random.normal(random_key, x_t.shape)
+        rng, sub_key = jax.random.split(rng)
+        noise = jax.random.normal(sub_key, x_t.shape)
 
         # Return x_{t-1} in Algorithm 2 line 4. This is basically
         # sampling from the distribution q(x_{t-1}|x_t) in Equation 4.

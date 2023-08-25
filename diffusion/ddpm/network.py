@@ -18,7 +18,11 @@ from diffusion.ddpm.data_loader import load_transformed_dataset
 
 
 class SinusoidalPositionEmbeddings(nn.Module):
-    """Sinusoidal Positional encoding used to encode the timestep `t`."""
+    """Sinusoidal Positional encoding used to encode the timestep `t`.
+
+    Args:
+        dim: embedding dimensions for the positional encoding.
+    """
 
     dim: int  # Emedding dimension
 
@@ -49,33 +53,33 @@ class Block(nn.Module):
     up: bool = False
 
     @nn.compact
-    def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
+    def __call__(self, x: jax.Array, t: jax.Array, train: bool = True) -> jax.Array:
         """Forward pass of the downsampling/upsampling block.
 
         Args:
             x: embedding tensor of shape (B, H, W, C).
             t: the timestep of the sample in question.
-            is_training: whether in training or inference mode.
+            train: whether in training or inference mode.
 
         Returns:
             Embedding tensor.
         """
         # Define layers for upsampling vs. downsampling
         if self.up:
-            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")
+            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3, 3), padding="SAME")
             transform = nn.ConvTranspose(
-                features=self.out_ch, kernel_size=(4,), strides=[2], padding="SAME"
+                features=self.out_ch, kernel_size=(4, 4), strides=(2, 2), padding="SAME"
             )
         else:
-            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")
-            transform = nn.ConvTranspose(
-                features=self.out_ch, kernel_size=(4,), strides=[2], padding="SAME"
+            conv1 = nn.Conv(features=self.out_ch, kernel_size=(3, 3), padding="SAME")
+            transform = nn.Conv(
+                features=self.out_ch, kernel_size=(4, 4), strides=(2, 2), padding="SAME"
             )
 
         # First convolution, ReLU, and batch normalisation
         h = conv1(x)
         h = jax.nn.relu(h)
-        h = nn.BatchNorm(momentum=0.9, use_running_average=True)(h)
+        h = nn.BatchNorm(momentum=0.9, use_running_average=not train)(h)
         # Time embedding. Shape (1, time_emb_dim)
         time_emb = nn.Dense(features=self.out_ch)(t)
         time_emb = jax.nn.relu(time_emb)
@@ -89,9 +93,9 @@ class Block(nn.Module):
         h = h + time_emb
 
         # Second Conv
-        h = nn.Conv(features=self.out_ch, kernel_size=(3,), padding="SAME")(h)
+        h = nn.Conv(features=self.out_ch, kernel_size=(3, 3), padding="SAME")(h)
         h = jax.nn.relu(h)
-        h = nn.BatchNorm(momentum=0.9, use_running_average=True)(h)
+        h = nn.BatchNorm(momentum=0.9, use_running_average=not train)(h)
 
         return transform(h)
 
@@ -106,14 +110,15 @@ class SimpleUnet(nn.Module):
     time_emb_dim: int = 32
 
     @nn.compact
-    def __call__(self, x: jax.Array, t: jax.Array) -> jax.Array:
+    def __call__(self, x: jax.Array, t: jax.Array, train: bool = True) -> jax.Array:
         """Do a forward pass of the neural network in the denoising process.
 
         Args:
             x: during training, this is usually a noisy version of some starting
-                image `x_0` sampled at a timestep `t`.
+                image `x_0` sampled at a timestep `t`. Shape (batch_size, H, W, C).
             t: the timestep indicating how much noise has been added to the
-                starting image `x_0`. Is in {1, 2, ..., T}.
+                starting image `x_0`. Is in {1, 2, ..., T}. Shape (batch_size).
+            train: whether in training or inference mode.. Useful for BatchNorm layers.
 
         Returns:
             A prediction of the noise in the input `x`.
@@ -121,14 +126,17 @@ class SimpleUnet(nn.Module):
         # Compute the positional encoding of the timestep
         time_mlp = nn.Sequential(
             [
-                SinusoidalPositionEmbeddings(self.time_emb_dim),
+                SinusoidalPositionEmbeddings(dim=self.time_emb_dim),
                 nn.Dense(self.time_emb_dim),
                 jax.nn.relu,
             ]
         )
+        # time encoding with shape (batch_size, time_emb_dim).
         t_encoded = time_mlp(t)
 
-        x = nn.Conv(features=self.down_channels[0], kernel_size=(3,), padding="SAME")(x)
+        x = nn.Conv(features=self.down_channels[0], kernel_size=(3, 3), padding="SAME")(
+            x
+        )
 
         # U-net: downsampling followed by upsampling.
         residual_inputs = []  # Used as a stack
@@ -136,14 +144,14 @@ class SimpleUnet(nn.Module):
             x = Block(
                 in_ch=self.down_channels[i],
                 out_ch=self.down_channels[i + 1],
-            )(x, t_encoded)
+            )(x=x, t=t_encoded, train=train)
             residual_inputs.append(x)
         for i in range(len(self.up_channels) - 1):
             residual_x = residual_inputs.pop()
             x = jnp.concatenate((x, residual_x), axis=-1)
             x = Block(
                 in_ch=self.up_channels[i], out_ch=self.up_channels[i + 1], up=True
-            )(x, t_encoded)
+            )(x=x, t=t_encoded, train=train)
         output = nn.Conv(features=self.out_dim, kernel_size=(1,))(x)
 
         return output
@@ -174,4 +182,4 @@ if __name__ == "__main__":
 
     # Apply the forward function
     rng = jax.random.PRNGKey(7)
-    pred_noise = model.apply(params, rng=rng, t=t, x=image)
+    pred_noise = model.apply(params, rngs=rng, t=t, x=image)
