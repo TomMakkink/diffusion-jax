@@ -42,6 +42,7 @@ def inference() -> None:
             t=t,
             network_fn=network_fn,
             network_params=params,
+            rng=rng,
         )
 
     # Plot the generated/denoised image
