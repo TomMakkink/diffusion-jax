@@ -4,13 +4,10 @@ forward and backward processes.
 
 from __future__ import annotations
 
-from typing import Any
-
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional
-from flax import linen as nn
 from jax import numpy as jnp
 from torch.utils.data import DataLoader
 
@@ -63,8 +60,8 @@ class DDPM:
         )
 
     def create_noised_image(
-        self, x_0: jnp.ndarray, t: jnp.ndarray, random_key: jax.random.PRNGKey
-    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        self, x_0: jax.Array, t: jax.Array, random_key: jax.random.PRNGKey
+    ) -> tuple[jax.Array, jax.Array]:
         """Create a noised version of an uncorrupted image. Used in the forward process.
 
         Specifically, given an uncorrupted image at t=0 and timestep `t`, this method
@@ -108,16 +105,15 @@ class DDPM:
 
     def perform_denoising_step(
         self,
-        x_t: jnp.ndarray,
-        t: jnp.ndarray,
-        network_fn: nn.Module,
-        network_params: dict[str, Any],
+        x_t: jax.Array,
+        t: jax.Array,
+        noise_pred: jax.Array,
         rng: jax.random.PRNGKey,
-    ) -> jnp.ndarray:
+    ) -> jax.Array:
         """Denoise a noisy image to get a slightly less noisy image.
 
         The following steps are done:
-        - Call U-net model to predict the total noise in the noised input image `x_t`.
+        - U-net model to predict the total noise in the noised input image `x_t`.
         - Subtract this from `x_t` to give an estimate of the final image `x_0`.
         - If not in the final timestep, we apply noise (but less than previously) which
           results in x_{t-1} which is (hopefully) a slight improvement over `x_t`.
@@ -129,11 +125,8 @@ class DDPM:
         Args:
             x_t: the noisy image at timestep `t`. Shape (B, C, H, W).
             t: the timestep in question. Shape (B,).
-            network_fn: the U-net model used to predict the "total"
-                noise in the noisy image. Note this model is expected to already
-                be initialized.
-            network_params: network parameters to be passed into the apply method
-                (e.g. params, state, random key).
+            noise_pred: predicted noise added to the image, shape (B, C, H, W).
+            rng: jax.random.PRNGKey used for random number generation.
 
         Returns:
             - x_{t-1} if t > 0. This a noised version of the final image. It can be
@@ -149,9 +142,8 @@ class DDPM:
 
         # Calculate µ_θ in Equation 11 of the DDPM paper, where the noise is predicted
         # using the U-net model (represented as ε_θ(x_t, t) in the paper).
-        pred_noise = network_fn.apply(t=t, x=x_t, **network_params)
         model_mean = sqrt_recip_alpha_t * (
-            x_t - beta_t * pred_noise / sqrt_one_minus_alphabar_t
+            x_t - beta_t * noise_pred / sqrt_one_minus_alphabar_t
         )
 
         # Compute (sigma_t)^2 in Algorithm 2 line 4

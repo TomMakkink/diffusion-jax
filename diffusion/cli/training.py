@@ -6,12 +6,13 @@ from typing import Callable
 
 import jax
 import optax
+import orbax.checkpoint
 from flax import linen as nn
 from flax.training import train_state
 from jax import numpy as jnp
 from torch.utils.data import DataLoader
 
-from diffusion.ddpm.constants import BATCH_SIZE, IMG_SIZE, SEED
+from diffusion.ddpm.constants import BATCH_SIZE, CHECKPOINT_DIR, IMG_SIZE, SEED
 from diffusion.ddpm.data_loader import load_transformed_dataset
 from diffusion.ddpm.ddpm import DDPM
 from diffusion.ddpm.network import SimpleUnet
@@ -63,7 +64,7 @@ def create_train_state(
     return state
 
 
-def l1_loss(noise: jax.Array, noise_pred: jax.Array) -> float:
+def l1_loss(noise: jax.Array, noise_pred: jax.Array) -> jax.Array:
     """Compute the L1 loss between actual and predicted noise.
 
     Args:
@@ -73,7 +74,7 @@ def l1_loss(noise: jax.Array, noise_pred: jax.Array) -> float:
     Returns:
         loss: scalar L1 loss.
     """
-    loss = float(jnp.mean(jnp.abs(noise - noise_pred)))
+    loss = jnp.mean(jnp.abs(noise - noise_pred))
     return loss
 
 
@@ -189,6 +190,12 @@ def training() -> None:
     ddpm = DDPM(T=T)
     epochs = 100
 
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=2, create=True)
+    checkpoint_manager = orbax.checkpoint.CheckpointManager(
+        CHECKPOINT_DIR, orbax_checkpointer, options
+    )
+
     for epoch in range(epochs):
         for step, (x_0, _) in enumerate(dataloader):
             # Algorithm 1 line 3: sample `t` from a discrete uniform distribution
@@ -213,6 +220,10 @@ def training() -> None:
             )
 
             logging.info(f"Epoch {epoch} | step {step:03d} Loss: {loss} ")
+
+        # Save the training state.
+        checkpoint_dict = {"state": state}
+        checkpoint_manager.save(step=epoch, items=checkpoint_dict)
 
 
 if __name__ == "__main__":
