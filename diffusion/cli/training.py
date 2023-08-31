@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
 
 import jax
 import optax
@@ -84,17 +83,15 @@ def grad_fn(
     t: jax.Array,
     noise: jax.Array,
     state: TrainState,
-    loss_fn: Callable = l1_loss,
 ) -> tuple[dict[str, jax.Array], float, dict[str, jax.Array]]:
     """Compute gradients using a specific loss function.
 
     Args:
         params: model parameters.
-        x_t: the original image at time t. Shape (B, C, H, W).
+        x_t: the noised image at time t. Shape (B, C, H, W).
         t: timestep to sample. Can take values in {1, ..., T}. Shape (B,).
-        noise: original noise added to the image, shape (B, C, H, W).
+        noise: noise added to the original image, shape (B, C, H, W).
         state: training state.
-        loss_fn: loss function (e.g. l1 loss).
 
     Returns:
         grads: dict containing the gradients of the model's parameters.
@@ -111,7 +108,7 @@ def grad_fn(
             train=True,
             mutable=["batch_stats"],
         )
-        loss = loss_fn(noise, noise_pred)
+        loss = l1_loss(noise=noise, noise_pred=noise_pred)
         return loss, updates
 
     (loss, updates), grads = jax.value_and_grad(wrapped_loss, has_aux=True)(params)
@@ -119,30 +116,25 @@ def grad_fn(
     return grads, loss, updates
 
 
+@jax.jit
 def train_step(
     state: TrainState,
-    x_0: jax.Array,
+    x_t: jax.Array,
+    noise: jax.Array,
     t: jax.Array,
-    rng: jax.random.PRNGKey,
-    ddpm: DDPM,
-    loss_fn: Callable = l1_loss,
 ) -> tuple[TrainState, float]:
     """Train for a single step on a batch of data.
 
     Args:
         state: flax training state object.
-        x_0: the original image, i.e. the image at t=0. Shape (B, C, H, W).
+        x_t: the noised image at time t. Shape (B, C, H, W).
+        noise: noise added to the original image, shape (B, C, H, W).
         t: timestep to sample. Can take values in {1, ..., T}. Shape (B,).
-        rng: jax.random.PRNGKey used for random number generation.
-        ddpm: initialised ddpm class object.
-        loss_fn: loss function (e.g. l1 loss).
 
     Returns:
         state: updated training state after updating the network parameters.
         loss: scalar loss.
     """
-    # From the original image x_0, sample a noised image at timestep t.
-    x_t, noise = ddpm.create_noised_image(x_0=x_0, t=t, random_key=rng)
 
     # Compute the gradients and loss.
     grads, loss, updates = grad_fn(
@@ -151,7 +143,6 @@ def train_step(
         t=t,
         noise=noise,
         state=state,
-        loss_fn=loss_fn,
     )
 
     # Update training state using the new gradients.
@@ -206,17 +197,19 @@ def training() -> None:
             x_0 = jnp.array(x_0.numpy())
 
             # Flax convolution layers by default expect a NHWC data format,
-            # not channels first like PyTorch.
+            # not channels first NCHW like PyTorch.
             x_0 = jnp.transpose(x_0, (0, 2, 3, 1))
 
-            # Execute a training step
+            # From the original image x_0, sample a noised image at timestep t.
             rng, sub_key = jax.random.split(rng)
+            x_t, noise = ddpm.create_noised_image(x_0=x_0, t=t, random_key=rng)
+
+            # Execute a training step
             state, loss = train_step(
                 state=state,
-                x_0=x_0,
+                x_t=x_t,
+                noise=noise,
                 t=t,
-                rng=sub_key,
-                ddpm=ddpm,
             )
 
             logging.info(f"Epoch {epoch} | step {step:03d} Loss: {loss} ")

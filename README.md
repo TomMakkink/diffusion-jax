@@ -4,6 +4,10 @@ Implementation of
 [Denoising Diffusion Probablistic Models](https://arxiv.org/abs/2006.11239) (DDPM) by Ho
 et al. 2020.
 
+This implementation of DDPM is written in Jax using the
+[Flax](https://flax.readthedocs.io/en/latest/) framework. The goal was to write simple,
+readable, and easy to understand code that illustrates the core mechanics of the paper.
+
 ## Setup
 
 Clone the repository:
@@ -37,6 +41,21 @@ To train a Diffusion model, launch the following command:
 ```shell
 python diffusion/cli/training.py
 ```
+
+The training parameters, such as the learning rate, are configured in
+`diffusion/ddpm/constants.py`. During training the checkpoints from the latest two
+epochs will be saved using the [orbax](https://github.com/google/orbax) library.
+
+## Inference/Sampling
+
+To run inference and generate an image using a saved model, launch the following
+command:
+
+```shell
+python diffusion/cli/inference.py
+```
+
+Note the latest checkpoint saved during training will be used for inference.
 
 ## DDPM
 
