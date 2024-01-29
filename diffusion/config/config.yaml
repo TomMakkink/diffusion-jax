@@ -1,0 +1,10 @@
+# Configuration file
+epochs: 10
+batch_size: 256
+learning_rate: 0.001
+num_t: 100
+image_size: 64
+image_channels: 1
+seed: 123
+checkpoint_dir: "checkpoints/orbax/"
+max_ckpts_to_keep: 2

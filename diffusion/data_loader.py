@@ -9,13 +9,16 @@ from PIL import Image
 from torch.utils.data import ConcatDataset
 from torchvision import transforms
 
-from diffusion.ddpm.constants import IMG_SIZE
 
-
-def load_transformed_dataset() -> ConcatDataset[tuple[torch.Tensor, int]]:
+def load_transformed_dataset(
+    image_size: int,
+) -> ConcatDataset[tuple[torch.Tensor, int]]:
     """Loads a torchvision dataset, performs transformations on it,
     creates a training set and a test set, and finally combines these
     into one object.
+
+    Args:
+        image_size: image height and width.
 
     Returns:
         `ConcatDataset` object where each element is a tuple consisting of
@@ -23,18 +26,24 @@ def load_transformed_dataset() -> ConcatDataset[tuple[torch.Tensor, int]]:
             - The label.
     """
     data_transforms = [
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),
+        transforms.Resize((image_size, image_size)),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),  # Scales data to be in [0, 1]
         transforms.Lambda(lambda t: (t * 2) - 1),  # Scales data to be in [-1, 1]
     ]
     data_transform = transforms.Compose(data_transforms)
 
-    train = torchvision.datasets.OxfordIIITPet(
-        root=".", download=True, transform=data_transform
+    train = torchvision.datasets.MNIST(
+        root=".",
+        download=True,
+        transform=data_transform,
+        train=True,
     )
-    test = torchvision.datasets.OxfordIIITPet(
-        root=".", download=True, transform=data_transform, split="test"
+    test = torchvision.datasets.MNIST(
+        root=".",
+        download=True,
+        transform=data_transform,
+        train=False,
     )
     return torch.utils.data.ConcatDataset([train, test])
 

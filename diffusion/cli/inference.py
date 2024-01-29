@@ -2,26 +2,24 @@
 from __future__ import annotations
 
 import jax
-import orbax.checkpoint
+import omegaconf
 import torch
 from jax import device_get
 from jax import numpy as jnp
 
-from diffusion.ddpm.constants import BATCH_SIZE, CHECKPOINT_DIR, IMG_SIZE, SEED
-from diffusion.ddpm.data_loader import show_tensor_image
+from diffusion.data_loader import show_tensor_image
 from diffusion.ddpm.ddpm import DDPM
+from diffusion.utils import create_checkpoint_manager
 
 
-def inference() -> None:
+def inference(cfg: omegaconf.OmegaConf) -> None:
     """Implement Algorithm 2 in the paper."""
-    T = 100
-    ddpm = DDPM(T=T)
+    ddpm = DDPM(T=cfg.num_t)
 
     # Set up the checkpoint manager.
-    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=2, create=True)
-    checkpoint_manager = orbax.checkpoint.CheckpointManager(
-        CHECKPOINT_DIR, orbax_checkpointer, options
+    checkpoint_manager = create_checkpoint_manager(
+        checkpoint_dir=cfg.checkpoint_dir,
+        max_ckpts_to_keep=cfg.max_ckpts_to_keep,
     )
 
     # Load the latest saved model checkpoint
@@ -33,8 +31,8 @@ def inference() -> None:
 
     # Set the random key and provide some fake data to initialize the model
     # with the correct shapes.
-    rng = jax.random.PRNGKey(SEED)
-    image_shape = (BATCH_SIZE, IMG_SIZE, IMG_SIZE, 3)
+    rng = jax.random.PRNGKey(cfg.seed)
+    image_shape = (cfg.batch_size, cfg.image_size, cfg.image_size, cfg.image_channels)
 
     # Algorithm 2 line 1: sample pure noise at t=T from
     # the standard normal distribution.
@@ -42,7 +40,7 @@ def inference() -> None:
     x_t = jax.random.normal(key=sub_key, shape=image_shape)
 
     # Algorithm 2 for-loop
-    for timestep in range(T, 0):
+    for timestep in range(cfg.num_t, 0):
         t = jnp.array(timestep)
 
         noise_pred, _ = state.apply_fn(
@@ -69,4 +67,6 @@ def inference() -> None:
 
 
 if __name__ == "__main__":
-    inference()
+    # Read in the configuration file
+    cfg = omegaconf.OmegaConf.load("diffusion/config/config.yaml")
+    inference(cfg)

@@ -4,17 +4,17 @@ from __future__ import annotations
 import logging
 
 import jax
+import omegaconf
 import optax
-import orbax.checkpoint
 from flax import linen as nn
 from flax.training import train_state
 from jax import numpy as jnp
 from torch.utils.data import DataLoader
 
-from diffusion.ddpm.constants import BATCH_SIZE, CHECKPOINT_DIR, IMG_SIZE, SEED
-from diffusion.ddpm.data_loader import load_transformed_dataset
+from diffusion.data_loader import load_transformed_dataset
 from diffusion.ddpm.ddpm import DDPM
-from diffusion.ddpm.network import SimpleUnet
+from diffusion.network import SimpleUnet
+from diffusion.utils import create_checkpoint_manager
 
 # Configure logging to show messages at the INFO level or above
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +28,9 @@ def create_train_state(
     model: nn.Module,
     rng: jax.random.PRNGKey,
     learning_rate: float,
+    batch_size: int,
+    image_size: int,
+    image_channels: int,
 ) -> TrainState:
     """Creates the initial TrainState.
 
@@ -35,14 +38,17 @@ def create_train_state(
         model: flax model.
         rng: random key.
         learning_rate: learning rate for optimizer.
+        batch_size: number of examples in each batch.
+        image_size: image of size (same for width and height).
+        image_channels: number of image channels.
 
     Returns:
         train_state: training state containing the model apply
           function, model parameters, batch stats and optimizer.
     """
     # Define fake data to initialise the model.
-    init_t = jnp.ones(BATCH_SIZE)
-    init_x = jnp.ones((BATCH_SIZE, IMG_SIZE, IMG_SIZE, 3))
+    init_t = jnp.ones(batch_size)
+    init_x = jnp.ones((batch_size, image_size, image_size, image_channels))
 
     # Initialize the network.
     variables = model.init(rngs=rng, t=init_t, x=init_x, train=False)
@@ -135,7 +141,6 @@ def train_step(
         state: updated training state after updating the network parameters.
         loss: scalar loss.
     """
-
     # Compute the gradients and loss.
     grads, loss, updates = grad_fn(
         params=state.params,
@@ -154,44 +159,45 @@ def train_step(
     return state, loss
 
 
-def training() -> None:
+def training(cfg: omegaconf.OmegaConf) -> None:
     """Implement Training (Algorithm 1) in the DDPM paper."""
     # Load the dataset.
-    dataset = load_transformed_dataset()
+    dataset = load_transformed_dataset(image_size=cfg.image_size)
     dataloader = DataLoader(
-        dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True
+        dataset, batch_size=cfg.batch_size, shuffle=True, drop_last=True
     )
 
     # Initialise the SimpleUnet network function.
-    model = SimpleUnet()
+    model = SimpleUnet(image_channels=cfg.image_channels)
 
     # Create an initial random key.
-    init_rng = jax.random.PRNGKey(SEED)
+    init_rng = jax.random.PRNGKey(cfg.seed)
     rng, sub_key = jax.random.split(init_rng)
 
-    # Create the training state.
     state = create_train_state(
         model=model,
         rng=sub_key,
-        learning_rate=0.001,
+        learning_rate=cfg.learning_rate,
+        batch_size=cfg.batch_size,
+        image_size=cfg.image_size,
+        image_channels=cfg.image_channels,
     )
-
-    # Set up the DDPM class.
-    T = 100
-    ddpm = DDPM(T=T)
-    epochs = 100
-
-    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=2, create=True)
-    checkpoint_manager = orbax.checkpoint.CheckpointManager(
-        CHECKPOINT_DIR, orbax_checkpointer, options
+    checkpoint_manager = create_checkpoint_manager(
+        checkpoint_dir=cfg.checkpoint_dir,
+        max_ckpts_to_keep=cfg.max_ckpts_to_keep,
     )
+    diffuser = DDPM(T=cfg.num_t)
 
-    for epoch in range(epochs):
+    for epoch in range(cfg.epochs):
         for step, (x_0, _) in enumerate(dataloader):
             # Algorithm 1 line 3: sample `t` from a discrete uniform distribution
             rng, sub_key = jax.random.split(rng)
-            t = jax.random.randint(sub_key, shape=(BATCH_SIZE,), minval=0, maxval=T)
+            t = jax.random.randint(
+                sub_key,
+                shape=(cfg.batch_size,),
+                minval=0,
+                maxval=cfg.num_t,
+            )
 
             # Convert the image x0 from a PyTorch tensor to a jax numpy array
             x_0 = jnp.array(x_0.numpy())
@@ -202,7 +208,7 @@ def training() -> None:
 
             # From the original image x_0, sample a noised image at timestep t.
             rng, sub_key = jax.random.split(rng)
-            x_t, noise = ddpm.create_noised_image(x_0=x_0, t=t, random_key=rng)
+            x_t, noise = diffuser.create_noised_image(x_0=x_0, t=t, random_key=sub_key)
 
             # Execute a training step
             state, loss = train_step(
@@ -220,4 +226,6 @@ def training() -> None:
 
 
 if __name__ == "__main__":
-    training()
+    # Read in the configuration file
+    cfg = omegaconf.OmegaConf.load("diffusion/config/config.yaml")
+    training(cfg)

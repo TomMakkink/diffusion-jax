@@ -102,7 +102,6 @@ class SimpleUnet(nn.Module):
     image_channels: int = 3
     down_channels: Sequence[int] = (64, 128, 256, 512, 1024)
     up_channels: Sequence[int] = (1024, 512, 256, 128, 64)
-    out_dim: int = 3
     time_emb_dim: int = 32
 
     @nn.compact
@@ -148,6 +147,6 @@ class SimpleUnet(nn.Module):
             x = Block(
                 in_ch=self.up_channels[i], out_ch=self.up_channels[i + 1], up=True
             )(x=x, t=t_encoded, train=train)
-        output = nn.Conv(features=self.out_dim, kernel_size=(1,))(x)
+        output = nn.Conv(features=self.image_channels, kernel_size=(1,))(x)
 
         return output
